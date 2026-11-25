@@ -1,17 +1,28 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import Navbar from "../components/Navbar";
-import {
-  getUsers,
-  saveUsers,
-  getRoleFromEmail,
-  MAX_ADMINS,
-  MAX_VIEWERS,
-} from "../auth";
 import PasswordInput from "../components/PasswordInput";
+import { auth } from "../firebase";
+import { getRoleFromEmail } from "../auth";
 
 const inputStyle =
   "mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500";
+
+function getSignupError(code) {
+  switch (code) {
+    case "auth/email-already-in-use":
+      return "An account with this email already exists.";
+    case "auth/invalid-email":
+      return "That email address is not valid.";
+    case "auth/weak-password":
+      return "Password must be at least 6 characters.";
+    case "auth/network-request-failed":
+      return "Network error. Check your internet connection and try again.";
+    default:
+      return `Something went wrong (${code}). Please try again.`;
+  }
+}
 
 function Signup() {
   const navigate = useNavigate();
@@ -23,12 +34,13 @@ function Signup() {
     confirmPassword: "",
   });
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   function handleChange(e) {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
 
     const email = formData.email.trim().toLowerCase();
@@ -49,37 +61,24 @@ function Signup() {
       return;
     }
 
-    const users = getUsers();
+    setError("");
+    setSubmitting(true);
 
-    if (users.some((user) => user.email === email)) {
-      setError("An account with this email already exists.");
-      return;
-    }
-
-    const sameRoleCount = users.filter((user) => user.role === role).length;
-
-    if (role === "admin" && sameRoleCount >= MAX_ADMINS) {
-      setError(`The maximum of ${MAX_ADMINS} admin accounts has been reached.`);
-      return;
-    }
-    if (role === "viewer" && sameRoleCount >= MAX_VIEWERS) {
-      setError(
-        `The maximum of ${MAX_VIEWERS} view-only accounts has been reached.`,
-      );
-      return;
-    }
-
-    saveUsers([
-      ...users,
-      {
-        id: Date.now(),
-        name: formData.name.trim(),
+    try {
+      const credential = await createUserWithEmailAndPassword(
+        auth,
         email,
-        password: formData.password,
-        role,
-      },
-    ]);
-    navigate("/login");
+        formData.password,
+      );
+      await updateProfile(credential.user, {
+        displayName: formData.name.trim(),
+      });
+      navigate(role === "admin" ? "/dashboard" : "/dashboard/inventory");
+    } catch (err) {
+      setError(getSignupError(err.code));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -140,9 +139,10 @@ function Signup() {
 
           <button
             type="submit"
-            className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700"
+            disabled={submitting}
+            className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Sign up
+            {submitting ? "Creating account..." : "Sign up"}
           </button>
         </form>
 

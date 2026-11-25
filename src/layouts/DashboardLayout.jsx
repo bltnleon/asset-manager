@@ -1,6 +1,12 @@
 import { useState, useEffect } from "react";
 import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { getUsers, saveUsers } from "../auth";
+import {
+  onAuthStateChanged,
+  signOut,
+  updateProfile as updateAuthProfile,
+} from "firebase/auth";
+import { auth } from "../firebase";
+import { getRoleFromEmail } from "../auth";
 
 const navItems = [
   { to: "/dashboard", label: "Overview", end: true, adminOnly: true },
@@ -22,13 +28,40 @@ function DashboardLayout() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  const [user, setUser] = useState(() =>
-    JSON.parse(localStorage.getItem("loggedInUser")),
-  );
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
     localStorage.setItem("assetRecords", JSON.stringify(assets));
   }, [assets]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        setUser({
+          id: firebaseUser.uid,
+          name: firebaseUser.displayName || firebaseUser.email,
+          email: firebaseUser.email,
+          role: getRoleFromEmail(firebaseUser.email || ""),
+          phone: "",
+          jobTitle: "",
+        });
+      } else {
+        setUser(null);
+      }
+      setAuthLoading(false);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-500">
+        Loading...
+      </div>
+    );
+  }
 
   if (!user || !user.role) {
     return <Navigate to="/login" replace />;
@@ -59,26 +92,18 @@ function DashboardLayout() {
     setAssets([]);
   }
 
-  function updateProfile(data) {
-    const changes = {
+  async function updateProfile(data) {
+    await updateAuthProfile(auth.currentUser, { displayName: data.name });
+    setUser({
+      ...user,
       name: data.name,
       phone: data.phone,
       jobTitle: data.jobTitle,
-    };
-
-    saveUsers(
-      getUsers().map((saved) =>
-        saved.id === user.id ? { ...saved, ...changes } : saved,
-      ),
-    );
-
-    const updatedUser = { ...user, ...changes };
-    localStorage.setItem("loggedInUser", JSON.stringify(updatedUser));
-    setUser(updatedUser);
+    });
   }
 
-  function handleLogout() {
-    localStorage.removeItem("loggedInUser");
+  async function handleLogout() {
+    await signOut(auth);
     navigate("/login");
   }
 

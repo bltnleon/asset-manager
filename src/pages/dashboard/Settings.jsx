@@ -1,4 +1,9 @@
-import { getUsers, saveUsers } from "../../auth";
+import {
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword,
+} from "firebase/auth";
+import { auth } from "../../firebase";
 import { useState } from "react";
 import { useOutletContext } from "react-router-dom";
 
@@ -12,7 +17,7 @@ const emptyPasswords = {
 };
 
 function Settings() {
-  const { assets, clearAssets, user } = useOutletContext();
+  const { assets, clearAssets } = useOutletContext();
 
   const [passwords, setPasswords] = useState(emptyPasswords);
   const [passwordMessage, setPasswordMessage] = useState(null);
@@ -22,18 +27,9 @@ function Settings() {
     setPasswords({ ...passwords, [e.target.name]: e.target.value });
   }
 
-  function handlePasswordSubmit(e) {
+  async function handlePasswordSubmit(e) {
     e.preventDefault();
-    const users = getUsers();
-    const savedUser = users.find((u) => u.id === user.id);
 
-    if (!savedUser || passwords.currentPassword !== savedUser.password) {
-      setPasswordMessage({
-        type: "error",
-        text: "Current password is incorrect.",
-      });
-      return;
-    }
     if (passwords.newPassword.length < 6) {
       setPasswordMessage({
         type: "error",
@@ -49,16 +45,36 @@ function Settings() {
       return;
     }
 
-    saveUsers(
-      users.map((u) =>
-        u.id === user.id ? { ...u, password: passwords.newPassword } : u,
-      ),
-    );
-    setPasswords(emptyPasswords);
-    setPasswordMessage({
-      type: "success",
-      text: "Password changed successfully.",
-    });
+    try {
+      const currentUser = auth.currentUser;
+      const credential = EmailAuthProvider.credential(
+        currentUser.email,
+        passwords.currentPassword,
+      );
+      await reauthenticateWithCredential(currentUser, credential);
+      await updatePassword(currentUser, passwords.newPassword);
+
+      setPasswords(emptyPasswords);
+      setPasswordMessage({
+        type: "success",
+        text: "Password changed successfully.",
+      });
+    } catch (err) {
+      if (
+        err.code === "auth/invalid-credential" ||
+        err.code === "auth/wrong-password"
+      ) {
+        setPasswordMessage({
+          type: "error",
+          text: "Current password is incorrect.",
+        });
+      } else {
+        setPasswordMessage({
+          type: "error",
+          text: `Could not change password (${err.code}).`,
+        });
+      }
+    }
   }
 
   function handleClearAssets() {

@@ -1,11 +1,29 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import Navbar from "../components/Navbar";
-import { getUsers, toSessionUser } from "../auth";
 import PasswordInput from "../components/PasswordInput";
+import { auth } from "../firebase";
+import { getRoleFromEmail } from "../auth";
 
 const inputStyle =
   "mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500";
+
+function getLoginError(code) {
+  switch (code) {
+    case "auth/invalid-credential":
+    case "auth/user-not-found":
+    case "auth/wrong-password":
+    case "auth/invalid-email":
+      return "Incorrect email or password";
+    case "auth/too-many-requests":
+      return "Too many attempts. Please wait a moment and try again.";
+    case "auth/network-request-failed":
+      return "Network error. Check your internet connection and try again.";
+    default:
+      return `Something went wrong (${code}). Please try again.`;
+  }
+}
 
 function Login() {
   const navigate = useNavigate();
@@ -15,38 +33,37 @@ function Login() {
     password: "",
   });
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   function handleChange(e) {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
+    setError("");
+    setSubmitting(true);
 
-    const email = formData.email.trim().toLowerCase();
-    const users = getUsers();
+    try {
+      const credential = await signInWithEmailAndPassword(
+        auth,
+        formData.email.trim().toLowerCase(),
+        formData.password,
+      );
+      const role = getRoleFromEmail(credential.user.email || "");
 
-    if (users.length === 0) {
-      setError("No account found. Please sign up first.");
-      return;
+      if (!role) {
+        await signOut(auth);
+        setError("This account does not have access to the system.");
+        return;
+      }
+
+      navigate(role === "admin" ? "/dashboard" : "/dashboard/inventory");
+    } catch (err) {
+      setError(getLoginError(err.code));
+    } finally {
+      setSubmitting(false);
     }
-
-    const matchedUser = users.find(
-      (user) => user.email === email && user.password === formData.password,
-    );
-
-    if (!matchedUser) {
-      setError("Incorrect email or password");
-      return;
-    }
-
-    localStorage.setItem(
-      "loggedInUser",
-      JSON.stringify(toSessionUser(matchedUser)),
-    );
-    navigate(
-      matchedUser.role === "admin" ? "/dashboard" : "/dashboard/inventory",
-    );
   }
 
   return (
@@ -81,9 +98,10 @@ function Login() {
 
           <button
             type="submit"
-            className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700"
+            disabled={submitting}
+            className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Log in
+            {submitting ? "Logging in..." : "Log in"}
           </button>
         </form>
 
