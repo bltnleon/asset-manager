@@ -1,12 +1,8 @@
 import { useState, useEffect } from "react";
 import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom";
-import {
-  onAuthStateChanged,
-  signOut,
-  updateProfile as updateAuthProfile,
-} from "firebase/auth";
-import { auth } from "../firebase";
-import { getRoleFromEmail } from "../auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { auth, db } from "../firebase";
 
 const navItems = [
   { to: "/dashboard", label: "Overview", end: true, adminOnly: true },
@@ -36,19 +32,27 @@ function DashboardLayout() {
   }, [assets]);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        setUser({
-          id: firebaseUser.uid,
-          name: firebaseUser.displayName || firebaseUser.email,
-          email: firebaseUser.email,
-          role: getRoleFromEmail(firebaseUser.email || ""),
-          phone: "",
-          jobTitle: "",
-        });
-      } else {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!firebaseUser) {
+        setUser(null);
+        setAuthLoading(false);
+        return;
+      }
+
+      try {
+        const profile = await getDoc(doc(db, "users", firebaseUser.uid));
+
+        if (profile.exists()) {
+          setUser({ id: firebaseUser.uid, ...profile.data() });
+        } else {
+          await signOut(auth);
+          setUser(null);
+        }
+      } catch (err) {
+        console.error("Could not load profile:", err);
         setUser(null);
       }
+
       setAuthLoading(false);
     });
 
@@ -93,13 +97,14 @@ function DashboardLayout() {
   }
 
   async function updateProfile(data) {
-    await updateAuthProfile(auth.currentUser, { displayName: data.name });
-    setUser({
-      ...user,
+    const changes = {
       name: data.name,
       phone: data.phone,
       jobTitle: data.jobTitle,
-    });
+    };
+
+    await updateDoc(doc(db, "users", user.id), changes);
+    setUser({ ...user, ...changes });
   }
 
   async function handleLogout() {

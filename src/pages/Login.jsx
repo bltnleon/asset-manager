@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import Navbar from "../components/Navbar";
 import PasswordInput from "../components/PasswordInput";
-import { auth } from "../firebase";
-import { getRoleFromEmail } from "../auth";
+import { auth, db } from "../firebase";
 
 const inputStyle =
   "mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500";
@@ -50,15 +50,20 @@ function Login() {
         formData.email.trim().toLowerCase(),
         formData.password,
       );
-      const role = getRoleFromEmail(credential.user.email || "");
 
-      if (!role) {
+      const profile = await getDoc(doc(db, "users", credential.user.uid));
+
+      if (!profile.exists()) {
         await signOut(auth);
-        setError("This account does not have access to the system.");
+        setError(
+          "This account does not have access. Please contact an administrator.",
+        );
         return;
       }
 
-      navigate(role === "admin" ? "/dashboard" : "/dashboard/inventory");
+      navigate(
+        profile.data().role === "admin" ? "/dashboard" : "/dashboard/inventory",
+      );
     } catch (err) {
       setError(getLoginError(err.code));
     } finally {

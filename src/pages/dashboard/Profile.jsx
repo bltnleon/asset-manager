@@ -31,15 +31,21 @@ function Profile() {
     setIsEditing(true);
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    updateProfile({
-      name: formData.name.trim(),
-      phone: formData.phone.trim(),
-      jobTitle: formData.jobTitle.trim(),
-    });
-    setIsEditing(false);
-    setMessage("Profile updated successfully.");
+
+    try {
+      await updateProfile({
+        name: formData.name.trim(),
+        phone: formData.phone.trim(),
+        jobTitle: formData.jobTitle.trim(),
+      });
+      setIsEditing(false);
+      setMessage("Profile updated successfully.");
+    } catch (err) {
+      console.error(err);
+      setMessage("Could not save your changes. Please try again.");
+    }
   }
 
   return (

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { createUserWithEmailAndPassword, deleteUser } from "firebase/auth";
 import Navbar from "../components/Navbar";
 import PasswordInput from "../components/PasswordInput";
 import { auth } from "../firebase";
-import { getRoleFromEmail } from "../auth";
+import { getRoleFromEmail, MAX_ADMINS, MAX_VIEWERS } from "../auth";
+import { createUserProfile } from "../users";
 
 const inputStyle =
   "mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500";
@@ -64,18 +65,38 @@ function Signup() {
     setError("");
     setSubmitting(true);
 
+    let credential = null;
+
     try {
-      const credential = await createUserWithEmailAndPassword(
+      credential = await createUserWithEmailAndPassword(
         auth,
         email,
         formData.password,
       );
-      await updateProfile(credential.user, {
-        displayName: formData.name.trim(),
+
+      await createUserProfile({
+        uid: credential.user.uid,
+        name: formData.name.trim(),
+        email,
+        role,
       });
+
       navigate(role === "admin" ? "/dashboard" : "/dashboard/inventory");
     } catch (err) {
-      setError(getSignupError(err.code));
+      if (credential) {
+        // The account was created but setup failed, so remove it
+        await deleteUser(credential.user).catch(() => {});
+      }
+
+      if (err.message === "LIMIT_REACHED") {
+        setError(
+          role === "admin"
+            ? `The maximum of ${MAX_ADMINS} admin accounts has been reached.`
+            : `The maximum of ${MAX_VIEWERS} view-only accounts has been reached.`,
+        );
+      } else {
+        setError(getSignupError(err.code));
+      }
     } finally {
       setSubmitting(false);
     }

@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
-import { getUsers, saveUsers, MAX_ADMINS, MAX_VIEWERS } from "../../auth";
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "../../firebase";
+import { deleteUserProfile } from "../../users";
+import { MAX_ADMINS, MAX_VIEWERS } from "../../auth";
 
 const roleStyles = {
   admin: "bg-purple-100 text-purple-700",
@@ -14,22 +17,49 @@ const roleLabels = {
 
 function Users() {
   const { user } = useOutletContext();
-  const [users, setUsers] = useState(getUsers);
+
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function loadUsers() {
+      try {
+        const snapshot = await getDocs(collection(db, "users"));
+        const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        setUsers(list);
+      } catch (err) {
+        console.error(err);
+        setError("Could not load users. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadUsers();
+  }, []);
 
   const adminCount = users.filter((u) => u.role === "admin").length;
   const viewerCount = users.filter((u) => u.role === "viewer").length;
 
-  function handleDelete(target) {
+  async function handleDelete(target) {
     if (target.id === user.id) return;
 
     if (
-      window.confirm(
-        `Delete ${target.name} (${target.email})? They will no longer be able to log in.`,
+      !window.confirm(
+        `Delete ${target.name} (${target.email})? They will no longer be able to access the system.`,
       )
     ) {
-      const remaining = users.filter((u) => u.id !== target.id);
-      saveUsers(remaining);
-      setUsers(remaining);
+      return;
+    }
+
+    try {
+      await deleteUserProfile(target);
+      setUsers(users.filter((u) => u.id !== target.id));
+    } catch (err) {
+      console.error(err);
+      setError("Could not delete this user. Please try again.");
     }
   }
 
@@ -37,6 +67,8 @@ function Users() {
     <div>
       <h1 className="text-2xl font-bold text-gray-900">Users</h1>
       <p className="text-gray-600">Manage who can access the system.</p>
+
+      {error && <p className="mt-4 text-red-600 text-sm">{error}</p>}
 
       <div className="mt-6 grid gap-4 grid-cols-2 max-w-xl">
         <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
@@ -71,6 +103,26 @@ function Users() {
               </tr>
             </thead>
             <tbody>
+              {loading && (
+                <tr>
+                  <td
+                    colSpan="4"
+                    className="px-5 py-8 text-center text-gray-500"
+                  >
+                    Loading users...
+                  </td>
+                </tr>
+              )}
+              {!loading && users.length === 0 && (
+                <tr>
+                  <td
+                    colSpan="4"
+                    className="px-5 py-8 text-center text-gray-500"
+                  >
+                    No users found.
+                  </td>
+                </tr>
+              )}
               {users.map((target) => (
                 <tr
                   key={target.id}
