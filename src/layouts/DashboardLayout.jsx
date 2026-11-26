@@ -1,7 +1,20 @@
 import { useState, useEffect } from "react";
 import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+  writeBatch,
+} from "firebase/firestore";
 import { auth, db } from "../firebase";
 
 const navItems = [
@@ -19,18 +32,16 @@ const navItems = [
 function DashboardLayout() {
   const navigate = useNavigate();
 
-  const [assets, setAssets] = useState(() => {
-    const saved = localStorage.getItem("assetRecords");
-    return saved ? JSON.parse(saved) : [];
-  });
-
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  useEffect(() => {
-    localStorage.setItem("assetRecords", JSON.stringify(assets));
-  }, [assets]);
+  const [assets, setAssets] = useState([]);
+  const [assetsLoading, setAssetsLoading] = useState(true);
+  const [assetsError, setAssetsError] = useState("");
 
+  const userId = user ? user.id : null;
+
+  // Who is logged in?
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!firebaseUser) {
@@ -59,6 +70,32 @@ function DashboardLayout() {
     return unsubscribe;
   }, []);
 
+  // Keep the asset list up to date once someone is logged in
+  useEffect(() => {
+    if (!userId) return;
+
+    const assetsQuery = query(
+      collection(db, "assets"),
+      orderBy("createdAt", "desc"),
+    );
+
+    const unsubscribe = onSnapshot(
+      assetsQuery,
+      (snapshot) => {
+        setAssets(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setAssetsError("");
+        setAssetsLoading(false);
+      },
+      (err) => {
+        console.error("Could not load assets:", err);
+        setAssetsError("Could not load assets. Please try again later.");
+        setAssetsLoading(false);
+      },
+    );
+
+    return unsubscribe;
+  }, [userId]);
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-gray-500">
@@ -74,26 +111,36 @@ function DashboardLayout() {
   const isAdmin = user.role === "admin";
   const visibleNavItems = navItems.filter((item) => !item.adminOnly || isAdmin);
 
-  function addAsset(data) {
+  async function addAsset(data) {
     if (!isAdmin) return;
-    setAssets([{ id: Date.now(), ...data }, ...assets]);
+    await addDoc(collection(db, "assets"), {
+      ...data,
+      createdAt: serverTimestamp(),
+    });
   }
 
-  function updateAsset(id, data) {
+  async function updateAsset(id, data) {
     if (!isAdmin) return;
-    setAssets(
-      assets.map((asset) => (asset.id === id ? { ...asset, ...data } : asset)),
-    );
+    await updateDoc(doc(db, "assets", id), data);
   }
 
-  function deleteAsset(id) {
+  async function deleteAsset(id) {
     if (!isAdmin) return;
-    setAssets(assets.filter((asset) => asset.id !== id));
+    await deleteDoc(doc(db, "assets", id));
   }
 
-  function clearAssets() {
+  async function clearAssets() {
     if (!isAdmin) return;
-    setAssets([]);
+
+    const snapshot = await getDocs(collection(db, "assets"));
+    const docs = snapshot.docs;
+
+    // A batch can hold up to 500 changes, so we delete in groups of 400
+    for (let i = 0; i < docs.length; i += 400) {
+      const batch = writeBatch(db);
+      docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
   }
 
   async function updateProfile(data) {
@@ -186,17 +233,25 @@ function DashboardLayout() {
 
       {/* Section content appears here */}
       <main className="flex-1 min-w-0 p-6 md:p-10">
-        <Outlet
-          context={{
-            assets,
-            addAsset,
-            updateAsset,
-            deleteAsset,
-            clearAssets,
-            user,
-            updateProfile,
-          }}
-        />
+        {assetsError && (
+          <p className="mb-4 text-red-600 text-sm">{assetsError}</p>
+        )}
+
+        {assetsLoading ? (
+          <p className="text-gray-500">Loading assets...</p>
+        ) : (
+          <Outlet
+            context={{
+              assets,
+              addAsset,
+              updateAsset,
+              deleteAsset,
+              clearAssets,
+              user,
+              updateProfile,
+            }}
+          />
+        )}
       </main>
     </div>
   );

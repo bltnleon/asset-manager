@@ -34,7 +34,7 @@ function Inventory() {
     setEditingAsset(null);
   }
 
-  function handleSave(data) {
+  async function handleSave(data) {
     const serial = data.serialNumber.trim().toLowerCase();
     const duplicate = assets.some(
       (asset) =>
@@ -47,22 +47,39 @@ function Inventory() {
     }
 
     const cleaned = {
-      ...data,
       name: data.name.trim(),
       serialNumber: data.serialNumber.trim(),
+      category: data.category,
+      location: data.location.trim(),
+      cost: Number(data.cost),
+      purchaseDate: data.purchaseDate,
+      condition: data.condition,
+      department: data.department.trim(),
+      status: data.status,
+      assignedTo: data.assignedTo.trim(),
     };
 
-    if (editingAsset) {
-      updateAsset(editingAsset.id, cleaned);
-    } else {
-      addAsset(cleaned);
+    try {
+      if (editingAsset) {
+        await updateAsset(editingAsset.id, cleaned);
+      } else {
+        await addAsset(cleaned);
+      }
+      closeForm();
+    } catch (err) {
+      console.error(err);
+      return "Could not save the asset. Please try again.";
     }
-    closeForm();
   }
 
-  function handleDelete(asset) {
-    if (window.confirm(`Delete "${asset.name}"?`)) {
-      deleteAsset(asset.id);
+  async function handleDelete(asset) {
+    if (!window.confirm(`Delete "${asset.name}"?`)) return;
+
+    try {
+      await deleteAsset(asset.id);
+    } catch (err) {
+      console.error(err);
+      window.alert("Could not delete the asset. Please try again.");
     }
   }
 

@@ -29,6 +29,7 @@ function Field({ label, children }) {
 function AssetForm({ initialData, onSave, onCancel }) {
   const [formData, setFormData] = useState(initialData || emptyForm);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const isEditing = Boolean(initialData);
 
@@ -42,10 +43,17 @@ function AssetForm({ initialData, onSave, onCancel }) {
     }
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    const message = onSave(formData);
-    if (message) setError(message);
+    setError("");
+    setSubmitting(true);
+
+    try {
+      const message = await onSave(formData);
+      if (message) setError(message);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -184,9 +192,14 @@ function AssetForm({ initialData, onSave, onCancel }) {
       <div className="mt-6 flex gap-3">
         <button
           type="submit"
-          className="bg-blue-600 text-white px-5 py-2 rounded-lg font-medium hover:bg-blue-700"
+          disabled={submitting}
+          className="bg-blue-600 text-white px-5 py-2 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {isEditing ? "Save changes" : "Register asset"}
+          {submitting
+            ? "Saving..."
+            : isEditing
+              ? "Save changes"
+              : "Register asset"}
         </button>
         <button
           type="button"

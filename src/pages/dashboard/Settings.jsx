@@ -77,14 +77,21 @@ function Settings() {
     }
   }
 
-  function handleClearAssets() {
+  async function handleClearAssets() {
     if (
-      window.confirm(
+      !window.confirm(
         `This will permanently delete all ${assets.length} assets. Continue?`,
       )
     ) {
-      clearAssets();
+      return;
+    }
+
+    try {
+      await clearAssets();
       setDataMessage("All assets have been deleted.");
+    } catch (err) {
+      console.error(err);
+      window.alert("Could not delete the assets. Please try again.");
     }
   }
 
